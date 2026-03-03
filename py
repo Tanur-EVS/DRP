@@ -1,58 +1,160 @@
 import functions_framework
 import pandas as pd
-from google.cloud import bigquery
 from google.cloud import storage
-import io
+from google.cloud import bigquery
 from datetime import datetime
+import io
+import os
+
+PROJECT_ID = os.environ.get("GCP_PROJECT")
+DATASET = "drp_leaderboard"
+
+RAW_TABLE = f"{PROJECT_ID}.{DATASET}.raw_drp_data"
+TOTALS_TABLE = f"{PROJECT_ID}.{DATASET}.weekly_totals"
+WOW_TABLE = f"{PROJECT_ID}.{DATASET}.leaderboard_wow"
+
+ARCHIVE_BUCKET = "drp-archive"
+
 
 @functions_framework.cloud_event
-def drp_transform(cloud_event):
-    
+def hello_gcs(cloud_event):
+
     bucket_name = cloud_event.data["bucket"]
     file_name = cloud_event.data["name"]
 
+    print(f"Processing file: {file_name}")
+
     storage_client = storage.Client()
+    bq_client = bigquery.Client()
+
+    # -----------------------------
+    # STEP 1 — DOWNLOAD FILE
+    # -----------------------------
     bucket = storage_client.bucket(bucket_name)
     blob = bucket.blob(file_name)
 
-    file_content = blob.download_as_bytes()
-    
-    # Read Excel
-    xls = pd.ExcelFile(io.BytesIO(file_content))
-    
-    # Combine all service sheets
-    df_list = []
-    for sheet in xls.sheet_names:
-        df = pd.read_excel(xls, sheet_name=sheet)
-        df_list.append(df)
-    
-    full_df = pd.concat(df_list)
-    
-    # Calculate total points per employee
-    grouped = (
-        full_df
-        .groupby(["DRP_ID", "Employee_Name"])
-        ["Points"]
-        .sum()
-        .reset_index()
+    file_bytes = blob.download_as_bytes()
+
+    # -----------------------------
+    # STEP 2 — READ EXCEL
+    # -----------------------------
+    df = pd.read_excel(io.BytesIO(file_bytes))
+
+    df.columns = df.columns.str.strip()
+
+    expected_columns = [
+        "DRP ID",
+        "Employee Name",
+        "Service",
+        "Points",
+        "Date"
+    ]
+
+    for col in expected_columns:
+        if col not in df.columns:
+            raise ValueError(f"Missing required column: {col}")
+
+    df = df.rename(columns={
+        "DRP ID": "drp_id",
+        "Employee Name": "employee_name",
+        "Service": "service",
+        "Points": "points",
+        "Date": "activity_date"
+    })
+
+    df["activity_date"] = pd.to_datetime(df["activity_date"]).dt.date
+    df["points"] = df["points"].astype(int)
+
+    # One file per week guaranteed
+    week_start = df["activity_date"].min()
+
+    df["week_start_date"] = week_start
+    df["processed_timestamp"] = datetime.utcnow()
+
+    # -----------------------------
+    # STEP 3 — LOAD RAW TO BQ
+    # -----------------------------
+    job_config = bigquery.LoadJobConfig(
+        write_disposition="WRITE_APPEND"
     )
 
-    grouped.rename(columns={
-        "DRP_ID": "employee_id",
-        "Employee_Name": "employee_name",
-        "Points": "total_points"
-    }, inplace=True)
+    load_job = bq_client.load_table_from_dataframe(
+        df,
+        RAW_TABLE,
+        job_config=job_config
+    )
 
-    # Add week date (hardcoded example - improve later)
-    week_date = datetime.today().date()
-    grouped["week_start_date"] = week_date
-    grouped["processed_timestamp"] = datetime.utcnow()
-    grouped["wow_change"] = 0  # placeholder
+    load_job.result()
+    print("Raw data loaded.")
 
-    client = bigquery.Client()
-    table_id = "your-project-id.drp_leaderboard.weekly_totals"
+    # -----------------------------
+    # STEP 4 — UPDATE WEEKLY TOTALS
+    # -----------------------------
+    totals_query = f"""
+    INSERT INTO `{TOTALS_TABLE}`
+    SELECT
+      drp_id,
+      employee_name,
+      week_start_date,
+      SUM(points) AS total_points
+    FROM `{RAW_TABLE}`
+    WHERE week_start_date = (
+        SELECT MAX(week_start_date) FROM `{RAW_TABLE}`
+    )
+    GROUP BY drp_id, employee_name, week_start_date
+    """
 
-    job = client.load_table_from_dataframe(grouped, table_id)
-    job.result()
+    bq_client.query(totals_query).result()
+    print("Weekly totals updated.")
 
-    print("Upload complete.")
+    # -----------------------------
+    # STEP 5 — WoW + RANKING
+    # -----------------------------
+    wow_query = f"""
+    CREATE OR REPLACE TABLE `{WOW_TABLE}` AS
+    WITH current_week AS (
+      SELECT *
+      FROM `{TOTALS_TABLE}`
+      WHERE week_start_date = (
+          SELECT MAX(week_start_date)
+          FROM `{TOTALS_TABLE}`
+      )
+    ),
+    previous_week AS (
+      SELECT *
+      FROM `{TOTALS_TABLE}`
+      WHERE week_start_date = (
+        SELECT MAX(week_start_date)
+        FROM `{TOTALS_TABLE}`
+        WHERE week_start_date < (
+          SELECT MAX(week_start_date)
+          FROM `{TOTALS_TABLE}`
+        )
+      )
+    )
+
+    SELECT
+      c.drp_id,
+      c.employee_name,
+      c.week_start_date,
+      c.total_points,
+      IFNULL(p.total_points, 0) AS previous_week_points,
+      c.total_points - IFNULL(p.total_points, 0) AS wow_change,
+      RANK() OVER (ORDER BY c.total_points DESC) AS rank
+    FROM current_week c
+    LEFT JOIN previous_week p
+    ON c.drp_id = p.drp_id
+    """
+
+    bq_client.query(wow_query).result()
+    print("WoW table rebuilt.")
+
+    # -----------------------------
+    # STEP 6 — ARCHIVE FILE
+    # -----------------------------
+    archive_bucket = storage_client.bucket(ARCHIVE_BUCKET)
+
+    bucket.copy_blob(blob, archive_bucket, file_name)
+    blob.delete()
+
+    print("File archived successfully.")
