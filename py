@@ -88,3 +88,20 @@ pandas==2.*
 openpyxl==3.*
 pyarrow==14.*
 db-dtypes==1.*
+
+
+
+
+{
+httpRequest: {9}
+insertId: "69a7d57500056e7058186f5a"
+logName: "projects/neat-striker-447409-t5/logs/run.googleapis.com%2Frequests"
+receiveTimestamp: "2026-03-04T06:47:17.361454313Z"
+resource: {2}
+severity: "WARNING"
+spanId: "b6b12e10702da0ad"
+textPayload: "The request was not authenticated. Either allow unauthenticated invocations or set the proper Authorization header. Read more at https://cloud.google.com/run/docs/securing/authenticating Additional troubleshooting documentation can be found at: https://cloud.google.com/run/docs/troubleshooting#unauthorized-client"
+timestamp: "2026-03-04T06:47:17.339168Z"
+trace: "projects/neat-striker-447409-t5/traces/6de1b146dc32bbff91577d869aaa7cee"
+traceSampled: true
+}
