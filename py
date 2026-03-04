@@ -90,18 +90,46 @@ pyarrow==14.*
 db-dtypes==1.*
 
 
+ERROR 2026-03-04T06:57:39.066059Z [severity: ERROR] Traceback (most recent call last): File "/layers/google.python.pip/pip/lib/python3.11/site-packages/flask/app.py", line 1511, in wsgi_app response = self.full_dispatch_request() ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File "/layers/google.python.pip/pip/lib/python3.11/site-packages/flask/app.py", line 919, in full_dispatch_request rv = self.handle_user_exception(e) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File "/layers/google.python.pip/pip/lib/python3.11/site-packages/flask/app.py", line 917, in full_dispatch_request rv = self.dispatch_request() ^^^^^^^^^^^^^^^^^^^^^^^ File "/layers/google.python.pip/pip/lib/python3.11/site-packages/flask/app.py", line 902, in dispatch_request return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args) # type: ignore[no-any-return] ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File "/layers/google.python.pip/pip/lib/python3.11/site-packages/functions_framework/execution_id.py", line 157, in wrapper result = view_function(*args, **kwargs) ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ File "/layers/google.python.pip/pip/lib/python3.11/site-packages/functions_framework/__init__.py", line 188, in view_func function(event) File "/layers/google.python.pip/pip/lib/python3.11/site-packages/functions_framework/__init__.py", line 81, in wrapper return func(*args, **kwargs) ^^^^^^^^^^^^^^^^^^^^^ File "/workspace/main.py", line 52, in process_excel melted = df.melt( ^^^^^^^^ File "/layers/google.python.pip/pip/lib/python3.11/site-packages/pandas/core/frame.py", line 9969, in melt return melt( ^^^^^ File "/layers/google.python.pip/pip/lib/python3.11/site-packages/pandas/core/reshape/melt.py", line 74, in melt raise KeyError( KeyError: "The following id_vars or value_vars are not present in the DataFrame: ['employee_name']"
+  {
+    "textPayload": "Traceback (most recent call last):\n  File \"/layers/google.python.pip/pip/lib/python3.11/site-packages/flask/app.py\", line 1511, in wsgi_app\n    response = self.full_dispatch_request()\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/layers/google.python.pip/pip/lib/python3.11/site-packages/flask/app.py\", line 919, in full_dispatch_request\n    rv = self.handle_user_exception(e)\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/layers/google.python.pip/pip/lib/python3.11/site-packages/flask/app.py\", line 917, in full_dispatch_request\n    rv = self.dispatch_request()\n         ^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/layers/google.python.pip/pip/lib/python3.11/site-packages/flask/app.py\", line 902, in dispatch_request\n    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/layers/google.python.pip/pip/lib/python3.11/site-packages/functions_framework/execution_id.py\", line 157, in wrapper\n    result = view_function(*args, **kwargs)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/layers/google.python.pip/pip/lib/python3.11/site-packages/functions_framework/__init__.py\", line 188, in view_func\n    function(event)\n  File \"/layers/google.python.pip/pip/lib/python3.11/site-packages/functions_framework/__init__.py\", line 81, in wrapper\n    return func(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^\n  File \"/workspace/main.py\", line 52, in process_excel\n    melted = df.melt(\n             ^^^^^^^^\n  File \"/layers/google.python.pip/pip/lib/python3.11/site-packages/pandas/core/frame.py\", line 9969, in melt\n    return melt(\n           ^^^^^\n  File \"/layers/google.python.pip/pip/lib/python3.11/site-packages/pandas/core/reshape/melt.py\", line 74, in melt\n    raise KeyError(\nKeyError: \"The following id_vars or value_vars are not present in the DataFrame: ['employee_name']\"",
+    "insertId": "69a7d7e30001020baa323ab9",
+    "resource": {
+      "type": "cloud_run_revision",
+      "labels": {
+        "revision_name": "drp-score-testing-00005-n8g",
+        "service_name": "drp-score-testing",
+        "configuration_name": "drp-score-testing",
+        "location": "us-central1",
+        "project_id": "neat-striker-447409-t5"
+      }
+    },
+    "timestamp": "2026-03-04T06:57:39.066059Z",
+    "severity": "ERROR",
+    "labels": {
+      "instanceId": "00da6cd2c422ccbb8c7a0f0f698e8ee2de6e3f408a960718188d9a13aaf577a84c4d56b13709ab2670d5937fe61f9568496503e92568ad0793ad90512cba27c20fa1879a186579ac9fa057ddaa7b9b",
+      "run.googleapis.com/base_image_versions": "us-docker.pkg.dev/serverless-runtimes/google-22/runtimes/python311:python311_20260215_3_11_14_RC00"
+    },
+    "logName": "projects/neat-striker-447409-t5/logs/run.googleapis.com%2Fstderr",
+    "receiveTimestamp": "2026-03-04T06:57:39.072932434Z",
+    "errorGroups": [
+      {
+        "id": "CMe7zb-144Xn8QE"
+      }
+    ]
+  }
 
 
-{
-httpRequest: {9}
-insertId: "69a7d57500056e7058186f5a"
+httpRequest: {10}
+insertId: "69a7d80600011960d05704e6"
+labels: {3}
 logName: "projects/neat-striker-447409-t5/logs/run.googleapis.com%2Frequests"
-receiveTimestamp: "2026-03-04T06:47:17.361454313Z"
+receiveTimestamp: "2026-03-04T06:58:14.079237257Z"
 resource: {2}
-severity: "WARNING"
-spanId: "b6b12e10702da0ad"
-textPayload: "The request was not authenticated. Either allow unauthenticated invocations or set the proper Authorization header. Read more at https://cloud.google.com/run/docs/securing/authenticating Additional troubleshooting documentation can be found at: https://cloud.google.com/run/docs/troubleshooting#unauthorized-client"
-timestamp: "2026-03-04T06:47:17.339168Z"
-trace: "projects/neat-striker-447409-t5/traces/6de1b146dc32bbff91577d869aaa7cee"
+severity: "ERROR"
+spanId: "8b545b938b53b8d5"
+timestamp: "2026-03-04T06:58:13.802038Z"
+trace: "projects/neat-striker-447409-t5/traces/aea416811fa3419addf949ee97a380a6"
 traceSampled: true
 }
+
