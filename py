@@ -1,26 +1,90 @@
-df = pd.read_excel(xls, sheet_name=sheet)
-        df["Service"] = sheet
-        all_data.append(df)
-    combined = pd.concat(all_data)
+import functions_framework
+from google.cloud import storage, bigquery
+import pandas as pd
+import io, re
 
-    # Employee totals
-    employee_totals = combined.groupby(["Employee Name","DRP ID"])["Points"].sum().reset_index()
+PROJECT_ID = "your-project-id"   # <-- update
+DATASET    = "training_data"
 
-    # Leaderboard
-    leaderboard = employee_totals.sort_values("Points", ascending=False).head(10)
+@functions_framework.cloud_event
+def process_excel(cloud_event):
+    data        = cloud_event.data
+    bucket_name = data["bucket"]
+    file_name   = data["name"]
 
-    # WoW Change
-    client = bigquery.Client()
-    last_week = client.query("SELECT * FROM employee_training.last_week_totals").to_dataframe()
-    wow = employee_totals.merge(last_week, on="DRP ID", suffixes=("", "_last"))
-    wow["WoW Change"] = wow["Points"] - wow["Points_last"]
+    # Only process Excel files
+    if not file_name.endswith(".xlsx"):
+        print(f"Skipping non-Excel file: {file_name}")
+        return
 
-    # Write to BigQuery
-    client.load_table_from_dataframe(employee_totals, "employee_training.employee_totals").result()
-    client.load_table_from_dataframe(leaderboard, "employee_training.leaderboard").result()
+    # Extract date from filename e.g. training_2025-03-04.xlsx
+    match = re.search(r"(\d{4}-\d{2}-\d{2})", file_name)
+    if not match:
+        print(f"No YYYY-MM-DD date found in filename: {file_name}. Aborting.")
+        return
+    week_date = match.group(1)
+    print(f"Processing file: {file_name} | Week date: {week_date}")
 
-Failed. Details: The user-provided container failed to start and listen on the port defined provided by the PORT=8080 environment variable within the allocated timeout. This can happen when the container port is misconfigured or if the timeout is too short. The health check timeout can be extended. Logs for this revision might contain more information. Logs URL: Open Cloud Logging  For more troubleshooting guidance, see https://cloud.google.com/run/docs/troubleshooting#container-failed-to-start 
-    client.load_table_from_dataframe(wow, "employee_training.wow_change").result()
+    # Download Excel from GCS
+    gcs_client  = storage.Client()
+    bq_client   = bigquery.Client(project=PROJECT_ID)
+    bucket      = gcs_client.bucket(bucket_name)
+    blob        = bucket.blob(file_name)
+    excel_bytes = blob.download_as_bytes()
+    xl          = pd.ExcelFile(io.BytesIO(excel_bytes))
 
-    # Update last_week_totals
-    client.load_table_from_dataframe(employee_totals, "employee_training.last_week_totals", job_config=bigquery.LoadJobConfig(write_disposition="WRITE_TRUNCATE")).result()
+    SKIP_TABS = {"Total Points", "Leaderboard", "WoW Change", "Last Week Snapshot"}
+
+    all_raw = []
+    for sheet in xl.sheet_names:
+        if sheet in SKIP_TABS:
+            continue
+
+        df = xl.parse(sheet)
+        df.columns = (df.columns
+                        .str.strip()
+                        .str.lower()
+                        .str.replace(" ", "_", regex=False))
+
+        id_cols       = ["employee_name", "drp_id"]
+        training_cols = [c for c in df.columns if c not in id_cols]
+
+        melted = df.melt(
+            id_vars=id_cols,
+            value_vars=training_cols,
+            var_name="training_column",
+            value_name="points"
+        )
+        melted["service_name"] = sheet
+        melted["week_date"]    = week_date
+        melted["points"]       = pd.to_numeric(
+                                     melted["points"], errors="coerce"
+                                 ).fillna(0)
+        all_raw.append(melted)
+
+    raw_df = pd.concat(all_raw, ignore_index=True)
+    print(f"Total rows parsed: {len(raw_df)}")
+
+    # Load to BigQuery — APPEND so history is preserved
+    table_ref  = f"{PROJECT_ID}.{DATASET}.raw_training_data"
+    job_config = bigquery.LoadJobConfig(
+        write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+        autodetect=True
+    )
+    job = bq_client.load_table_from_dataframe(
+        raw_df, table_ref, job_config=job_config
+    )
+    job.result()
+    print(f"Successfully loaded {len(raw_df)} rows into {table_ref}")
+```
+
+**`requirements.txt`**
+```
+functions-framework==3.*
+google-cloud-storage==2.*
+google-cloud-bigquery==3.*
+google-cloud-bigquery-storage==2.*
+pandas==2.*
+openpyxl==3.*
+pyarrow==14.*
+db-dtypes==1.*
