@@ -18,6 +18,8 @@ df = pd.read_excel(xls, sheet_name=sheet)
     # Write to BigQuery
     client.load_table_from_dataframe(employee_totals, "employee_training.employee_totals").result()
     client.load_table_from_dataframe(leaderboard, "employee_training.leaderboard").result()
+
+Failed. Details: The user-provided container failed to start and listen on the port defined provided by the PORT=8080 environment variable within the allocated timeout. This can happen when the container port is misconfigured or if the timeout is too short. The health check timeout can be extended. Logs for this revision might contain more information. Logs URL: Open Cloud Logging  For more troubleshooting guidance, see https://cloud.google.com/run/docs/troubleshooting#container-failed-to-start 
     client.load_table_from_dataframe(wow, "employee_training.wow_change").result()
 
     # Update last_week_totals
