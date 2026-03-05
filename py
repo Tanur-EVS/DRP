@@ -30,14 +30,16 @@ CREATE OR REPLACE TABLE `neat-striker-447409-t5.Training_points_tracking.last_we
 SELECT
     name,
     drp_id,
-    total_points AS last_week_points
-FROM `neat-striker-447409-t5.Training_points_tracking.employee_total_points`
+    SUM(points) AS last_week_points
+FROM `neat-striker-447409-t5.Training_points_tracking.raw_training_data`
 WHERE week_date = (
-    SELECT MAX(week_date)
-    FROM `neat-striker-447409-t5.Training_points_tracking.employee_total_points`
+    SELECT DISTINCT week_date
+    FROM `neat-striker-447409-t5.Training_points_tracking.raw_training_data`
+    ORDER BY week_date DESC
+    LIMIT 1 OFFSET 1
 )
+GROUP BY name, drp_id
 ORDER BY last_week_points DESC;
-
 
 -----------------------------------------------------------------------------------------------------------------------------
 CREATE OR REPLACE TABLE `neat-striker-447409-t5.Training_points_tracking.wow_change` AS
