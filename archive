@@ -3,9 +3,10 @@ from google.cloud import storage, bigquery
 import pandas as pd
 import io, re
 
-PROJECT_ID   = "neat-striker-447409-t5"
-DATASET      = "Training_points_tracking"
-ARCHIVE_PATH = "archive/"
+PROJECT_ID    = "neat-striker-447409-t5"
+DATASET       = "Training_points_tracking"
+INCOMING_PATH = "incoming/"
+ARCHIVE_PATH  = "archive/"
 
 @functions_framework.cloud_event
 def process_excel(cloud_event):
@@ -13,9 +14,9 @@ def process_excel(cloud_event):
     bucket_name = data["bucket"]
     file_name   = data["name"]
 
-    # Skip files already in archive folder — prevents re-trigger when moving
-    if file_name.startswith(ARCHIVE_PATH):
-        print(f"File is already in archive, skipping: {file_name}")
+    # Only process files from incoming/ folder
+    if not file_name.startswith(INCOMING_PATH):
+        print(f"File not in incoming/ folder, skipping: {file_name}")
         return
 
     # Only process Excel files
@@ -54,8 +55,9 @@ def process_excel(cloud_event):
         for row in result:
             if row.cnt > 0:
                 print(f"Data for week_date {week_date} already exists "
-                      f"({row.cnt} rows). Skipping to prevent duplicates.")
-                _move_to_archive(bucket, blob, file_name, ARCHIVE_PATH, bucket_name)
+                      f"({row.cnt} rows). Skipping load.")
+                print(f"Moving duplicate file to archive anyway...")
+                _move_to_archive(bucket, blob, file_name, bucket_name)
                 return
     except Exception as e:
         print(f"Duplicate check skipped (first run?): {e}")
@@ -112,17 +114,20 @@ def process_excel(cloud_event):
     print(f"Successfully loaded {len(records)} rows into {table_ref}")
 
     # ── Step 2: Move to archive ONLY after successful BQ load ──
-    _move_to_archive(bucket, blob, file_name, ARCHIVE_PATH, bucket_name)
+    _move_to_archive(bucket, blob, file_name, bucket_name)
 
 
-def _move_to_archive(bucket, blob, file_name, archive_path, bucket_name):
-    """Copy file to archive/ folder then delete original."""
-    archive_blob_name = f"{archive_path}{file_name}"
+def _move_to_archive(bucket, blob, file_name, bucket_name):
+    """Move file from incoming/ to archive/ folder."""
+    bare_name         = file_name.replace(INCOMING_PATH, "")
+    archive_blob_name = f"{ARCHIVE_PATH}{bare_name}"
+
     try:
         bucket.copy_blob(blob, bucket, archive_blob_name)
         print(f"Copied to: gs://{bucket_name}/{archive_blob_name}")
         blob.delete()
-        print(f"Deleted original: gs://{bucket_name}/{file_name}")
-        print(f"✅ Archive complete: gs://{bucket_name}/{archive_blob_name}")
+        print(f"Deleted from incoming: gs://{bucket_name}/{file_name}")
+        print(f"Archive complete: gs://{bucket_name}/{archive_blob_name}")
     except Exception as e:
-        print(f"Archive move failed (file still in root): {e}")
+        print(f"ERROR during archive move: {type(e).__name__}: {e}")
+        raise
