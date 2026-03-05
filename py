@@ -11,20 +11,18 @@ ORDER BY total_points DESC;
 ----------------------------------------------------------------------------------------------------------------------
 CREATE OR REPLACE TABLE `neat-striker-447409-t5.Training_points_tracking.wow_change` AS
 SELECT
+    RANK() OVER (ORDER BY t.total_points DESC) AS rank,
     t.name,
     t.drp_id,
-    t.week_date                                               AS current_week,
-    t.total_points                                            AS current_points,
+    t.week_date                                       AS current_week,
+    t.total_points                                    AS current_points,
     l.last_week_points,
-    t.total_points - COALESCE(l.last_week_points, 0)         AS wow_diff
+    CONCAT('+', CAST(t.total_points - COALESCE(l.last_week_points, 0) AS STRING)) AS wow_diff
 FROM `neat-striker-447409-t5.Training_points_tracking.employee_total_points` t
 LEFT JOIN `neat-striker-447409-t5.Training_points_tracking.last_week_snapshot` l
-    ON LOWER(TRIM(t.name)) = LOWER(TRIM(l.name))
-WHERE t.week_date = (
-    SELECT MAX(week_date)
-    FROM `neat-striker-447409-t5.Training_points_tracking.employee_total_points`
-)
-ORDER BY wow_diff DESC;
+    ON LOWER(TRIM(t.name))    = LOWER(TRIM(l.name))
+    AND LOWER(TRIM(t.drp_id)) = LOWER(TRIM(l.drp_id))
+ORDER BY rank;
 -------------------------------------------------------------------------------------------------------------------------------
 CREATE OR REPLACE TABLE `neat-striker-447409-t5.Training_points_tracking.last_week_snapshot` AS
 SELECT
