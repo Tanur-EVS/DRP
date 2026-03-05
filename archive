@@ -1,12 +1,12 @@
 import functions_framework
 from google.cloud import storage, bigquery
 import pandas as pd
+import os
 import io, re
 
-PROJECT_ID    = "neat-striker-447409-t5"
-DATASET       = "Training_points_tracking"
-INCOMING_PATH = "incoming/"
-ARCHIVE_PATH  = "archive/"
+PROJECT_ID = "neat-striker-447409-t5"
+DATASET    = "Training_points_tracking"
+ARCHIVE_BUCKET_NAME = "drp_archive_score"
 
 @functions_framework.cloud_event
 def process_excel(cloud_event):
@@ -14,17 +14,17 @@ def process_excel(cloud_event):
     bucket_name = data["bucket"]
     file_name   = data["name"]
 
-    # Only process files from incoming/ folder
-    if not file_name.startswith(INCOMING_PATH):
-        print(f"File not in incoming/ folder, skipping: {file_name}")
+    #skip the files aready present in archive folder ( prevents re-trigger )
+    if file_name.startswith(ARCHIVE_PATH):
+        print(f"File is already in archive, skipping: {file_name}")
         return
 
-    # Only process Excel files
+    # process only the Excel files
     if not file_name.endswith(".xlsx"):
         print(f"Skipping non-Excel file: {file_name}")
         return
 
-    # Extract date from filename e.g. Summary of DRP scores 2026-03-03.xlsx
+    # Extracting date from the filename e.g. Summary of DRP scores 2026-02-24.xlsx
     match = re.search(r"(\d{4}-\d{2}-\d{2})", file_name)
     if not match:
         print(f"No YYYY-MM-DD date found in filename: {file_name}. Aborting.")
@@ -32,19 +32,18 @@ def process_excel(cloud_event):
     week_date = match.group(1)
     print(f"Processing file: {file_name} | Week date: {week_date}")
 
-    # Initialize clients
     gcs_client = storage.Client()
     bq_client  = bigquery.Client(project=PROJECT_ID)
 
-    # Guard: file may have been deleted before function ran
+    # Incase file may have been deleted before function ran
     bucket = gcs_client.bucket(bucket_name)
     blob   = bucket.blob(file_name)
     if not blob.exists():
         print(f"File no longer exists in GCS, skipping: {file_name}")
         return
 
-    # Guard: prevent duplicate loads for same week_date
-    table_ref   = f"{PROJECT_ID}.{DATASET}.raw_training_data"
+    #prevent duplicate loads for same week
+    table_ref = f"{PROJECT_ID}.{DATASET}.raw_training_data"
     check_query = f"""
         SELECT COUNT(*) as cnt
         FROM `{table_ref}`
@@ -55,21 +54,17 @@ def process_excel(cloud_event):
         for row in result:
             if row.cnt > 0:
                 print(f"Data for week_date {week_date} already exists "
-                      f"({row.cnt} rows). Skipping load.")
-                print(f"Moving duplicate file to archive anyway...")
-                _move_to_archive(bucket, blob, file_name, bucket_name)
+                      f"({row.cnt} rows). Skipping to prevent duplicates.")
                 return
     except Exception as e:
+        # IF table doesn't exist yet on first run , safe to continue
         print(f"Duplicate check skipped (first run?): {e}")
 
     # Download Excel from GCS
     excel_bytes = blob.download_as_bytes()
     xl          = pd.ExcelFile(io.BytesIO(excel_bytes))
-
     all_raw = []
     for sheet in xl.sheet_names:
-        print(f"Processing sheet: '{sheet}'")
-
         df = xl.parse(sheet)
         df.columns = (df.columns
                         .str.strip()
@@ -81,8 +76,7 @@ def process_excel(cloud_event):
         id_cols       = [c for c in id_cols if c in df.columns]
         training_cols = [c for c in df.columns if c not in id_cols]
 
-        print(f"  → ID cols: {id_cols}")
-        print(f"  → Training cols: {training_cols}")
+        print(f"Sheet: '{sheet}' | Training cols: {training_cols}")
 
         melted = df.melt(
             id_vars=id_cols,
@@ -100,7 +94,7 @@ def process_excel(cloud_event):
     raw_df = pd.concat(all_raw, ignore_index=True)
     print(f"Total rows to load: {len(raw_df)}")
 
-    # ── Step 1: Load to BigQuery FIRST ──
+    # Load to BigQuery via JSON 
     records    = raw_df.where(pd.notnull(raw_df), None).to_dict(orient="records")
     job_config = bigquery.LoadJobConfig(
         write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
@@ -113,21 +107,13 @@ def process_excel(cloud_event):
     job.result()
     print(f"Successfully loaded {len(records)} rows into {table_ref}")
 
-    # ── Step 2: Move to archive ONLY after successful BQ load ──
-    _move_to_archive(bucket, blob, file_name, bucket_name)
+    _move_to_archive(gcs_client, bucket, blob, file_name, ARCHIVE_PATH, bucket_name)
 
-
-def _move_to_archive(bucket, blob, file_name, bucket_name):
-    """Move file from incoming/ to archive/ folder."""
-    bare_name         = file_name.replace(INCOMING_PATH, "")
-    archive_blob_name = f"{ARCHIVE_PATH}{bare_name}"
-
+def _move_to_archive(gcs_client, bucket, blob, file_name, ARCHIVE_PATH, bucket_name):
+    bare_name = os.path.basename(file_name)
+    dest_bucket = gcs_client.bucket(ARCHIVE_BUCKET_NAME)
+    # archive_blob_name = f"{ARCHIVE_PATH}{bare_name}"
     try:
-        bucket.copy_blob(blob, bucket, archive_blob_name)
-        print(f"Copied to: gs://{bucket_name}/{archive_blob_name}")
+        bucket.copy_blob(blob, dest_bucket, bare_name)
         blob.delete()
-        print(f"Deleted from incoming: gs://{bucket_name}/{file_name}")
-        print(f"Archive complete: gs://{bucket_name}/{archive_blob_name}")
     except Exception as e:
-        print(f"ERROR during archive move: {type(e).__name__}: {e}")
-        raise
