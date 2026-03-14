@@ -1,0 +1,33 @@
+CREATE OR REPLACE TABLE `neat-striker-447409-t5.Training_points_tracking.employee_total_points` AS
+SELECT
+    DENSE_RANK() OVER (PARTITION BY week_date ORDER BY SUM(points) DESC) AS rank,
+    name,
+    drp_id,
+    week_date,
+    SUM(points) AS total_points
+FROM `neat-striker-447409-t5.Training_points_tracking.raw_training_data`
+GROUP BY name, drp_id, week_date
+ORDER BY week_date DESC, rank;
+
+
+----------------------------------------------------------------------------------------------------------------------
+
+CREATE OR REPLACE TABLE `neat-striker-447409-t5.Training_points_tracking.wow_change` AS
+SELECT
+    a.week_date        AS week_a,
+    b.week_date        AS week_b,
+    a.name,
+    a.drp_id,
+    a.total_points     AS points_week_a,
+    b.total_points     AS points_week_b,
+    CASE
+        WHEN (a.total_points - COALESCE(b.total_points, 0)) > 0
+            THEN CONCAT('⬆ +', CAST(a.total_points - COALESCE(b.total_points, 0) AS STRING))
+        ELSE '➡ 0'
+    END AS wow_gained
+FROM `neat-striker-447409-t5.Training_points_tracking.employee_total_points` a
+LEFT JOIN `neat-striker-447409-t5.Training_points_tracking.employee_total_points` b
+    ON LOWER(TRIM(a.drp_id)) = LOWER(TRIM(b.drp_id))
+    AND b.week_date < a.week_date
+ORDER BY a.week_date DESC, a.total_points DESC;
+
