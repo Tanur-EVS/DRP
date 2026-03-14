@@ -31,3 +31,21 @@ LEFT JOIN `neat-striker-447409-t5.Training_points_tracking.employee_total_points
     AND b.week_date < a.week_date
 ORDER BY a.week_date DESC, a.total_points DESC;
 
+
+------------------------------------------------------------------------------------------------------------------------
+
+
+Why raw_training_data is still needed
+employee_total_points is built from raw_training_data — if you delete raw, you lose the ability to:
+
+Rebuild employee_total_points if something goes wrong
+Answer future questions like "which service did Amandeep score highest in?"
+Add new tables later like points breakdown by service or points by training type
+Reprocess historical data if query logic changes
+
+Think of it like this:
+raw_training_data     = original Excel data in BigQuery (source of truth)
+employee_total_points = a summary report built from it
+wow_change            = another report built from the summary
+Deleting raw_training_data would be like deleting the original Excel files after summarising them — you can never go back!
+And as we calculated earlier, even with years of weekly data it costs essentially nothing to store. So keep it — it's your safety net. ✅
